@@ -24,6 +24,10 @@ On
     <indiduino pin="6" type="output" />
 400
 </defNumber>
+<defNumber name="POSITION_MULTIPLIER" label="POSITION MULTIPLIER" format="%4.0f" min="1" max="16000" step="1">
+    <indiduino pin="7" type="output" />
+1
+</defNumber>
 </defNumberVector>
 
 <defNumberVector device="Arduino Stepper" name="TARGET_POSITION" label="POSITION" group="Main Control" state="Idle"  timeout="0" perm="rw">

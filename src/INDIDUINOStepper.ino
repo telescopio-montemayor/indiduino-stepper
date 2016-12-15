@@ -135,6 +135,8 @@ Servo servos[MAX_SERVOS];
 int *INWARD=&pinState[2];
 int *BLACKSLASH=&pinState[9];
 
+int positionMultiplier = 1;
+
 void custom_loop() {
    if (motor.distanceToGo() == 0)
       motor.disableOutputs();
@@ -194,7 +196,7 @@ int custom_analog_output(int pin,int value) {
            break;
        case 5:
            motor.enableOutputs();
-           motor.moveTo(value);   
+           motor.moveTo(positionMultiplier * value);
            break;
        case 9:               
 //             result=map(value, 0, 100, 0, 255);
@@ -206,6 +208,10 @@ int custom_analog_output(int pin,int value) {
            } else {
               motor.moveTo(motor.currentPosition()-value);   
            }  
+           break;
+
+       case 7:
+           positionMultiplier = value > 0 ? value : 1;
            break;
 
        default:
