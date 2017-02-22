@@ -74,7 +74,13 @@
 #include <Firmata.h>
 #include <AccelStepper.h>
 
-AccelStepper motor(1,9,8);
+//AccelStepper motor(1,9,8);
+//step dir enable
+//
+//AccelStepper motor(1,5,3);
+//step dir enable
+//11 12 13
+AccelStepper motor(AccelStepper::FULL4WIRE, 11, 12, 13);
 
 // move the following defines to Firmata.h?
 #define I2C_WRITE B00000000
