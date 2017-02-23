@@ -136,11 +136,19 @@ int *INWARD=&pinState[2];
 int *BLACKSLASH=&pinState[9];
 
 int positionMultiplier = 1;
+int trackingSpeed = 400;
+byte isTracking = false;
 
 void custom_loop() {
-   if (motor.distanceToGo() == 0)
+  if (isTracking) {
+    motor.runSpeed();
+  } else {
+    if (motor.distanceToGo() == 0) {
       motor.disableOutputs();
-        motor.run();
+    } else {
+      motor.run();
+    }
+  }
 }
 /* Nacho Mas. 
    custom initialization. 
@@ -168,6 +176,9 @@ int custom_analog_input(int pin) {
        case 0:      
                result=motor.currentPosition();  
                break;     
+       case 9:
+               result = trackingSpeed;
+               break;
        case 1:               
  //            result=map(value, 0, 1023, 0, 100);
  //            break;             
@@ -191,6 +202,12 @@ int custom_analog_output(int pin,int value) {
        case 3:
            motor.setMaxSpeed(value);
            break;
+       case 9:
+           trackingSpeed = value;
+           if (isTracking) {
+             motor.setSpeed(trackingSpeed);
+           }
+           break;
        case 6:
            motor.setAcceleration(value);
            break;
@@ -198,9 +215,6 @@ int custom_analog_output(int pin,int value) {
            motor.enableOutputs();
            motor.moveTo(positionMultiplier * value);
            break;
-       case 9:               
-//             result=map(value, 0, 100, 0, 255);
-               break;             
        case 10:
            motor.enableOutputs();
            if (*INWARD==1) {  
@@ -408,13 +422,33 @@ void digitalWriteCallback(byte port, int value)
     lastPin = port*8+8;
     if (lastPin > TOTAL_PINS) lastPin = TOTAL_PINS;
     for (pin=port*8; pin < lastPin; pin++) {
+
+      // custom mapping of pins to actions
+      switch (PIN_TO_DIGITAL(pin)) {
+        // tracking start
+        case 8:
+          if (((byte)value & mask) ? 1 : 0) {
+            isTracking = true;
+            motor.enableOutputs();
+            motor.setSpeed(trackingSpeed);
+          } else {
+            motor.stop();
+            isTracking = false;
+          }
+          continue;
+          break;
+
+        default:
+          break;
+      }
+
       // do not disturb non-digital pins (eg, Rx & Tx)
       if (IS_PIN_DIGITAL(pin)) {
         // only write to OUTPUT and INPUT (enables pullup)
         // do not touch pins in PWM, ANALOG, SERVO or other modes
         if (pinConfig[pin] == OUTPUT || pinConfig[pin] == INPUT) {
-          pinWriteMask |= mask;
           pinState[pin] = ((byte)value & mask) ? 1 : 0;
+          pinWriteMask |= mask;
         }
       }
       mask = mask << 1;
