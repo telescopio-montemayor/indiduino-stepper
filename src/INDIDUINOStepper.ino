@@ -85,7 +85,7 @@ AccelStepper motor(1,9,8);
 #define I2C_10BIT_ADDRESS_MODE_MASK B00100000
 
 #define MAX_QUERIES 8
-#define MINIMUM_SAMPLING_INTERVAL 10
+#define MINIMUM_SAMPLING_INTERVAL 250
 
 #define REGISTER_NOT_SPECIFIED -1
 
@@ -108,7 +108,7 @@ int pinState[TOTAL_PINS];           // any value that has been written
 /* timer variables */
 unsigned long currentMillis;        // store the current value from millis()
 unsigned long previousMillis;       // for comparison with currentMillis
-int samplingInterval = 19;          // how often to run the main loop (in ms)
+int samplingInterval = 250;          // how often to run the main loop (in ms)
 
 /* i2c data */
 struct i2c_device_info {
@@ -143,11 +143,7 @@ void custom_loop() {
   if (isTracking) {
     motor.runSpeed();
   } else {
-    if (motor.distanceToGo() == 0) {
-      motor.disableOutputs();
-    } else {
-      motor.run();
-    }
+    motor.run();
   }
 }
 /* Nacho Mas. 
@@ -158,7 +154,7 @@ void custom_setup() {
     motor.enableOutputs();
     motor.setMaxSpeed(4000.0);
     motor.setAcceleration(400.0);
-    motor.setCurrentPosition(8000);
+    motor.setCurrentPosition(0);
 }
 /* Nacho Mas. 
 	Change the value returned by readAnalog before send through
@@ -168,9 +164,7 @@ void custom_setup() {
 	readAnalog. 
 */
 int custom_analog_input(int pin) {
-  int value=0;
   int result=0;
-  value=analogRead(pin);
   switch(pin) {
       //PIN 14 A0
        case 0:      
@@ -184,7 +178,7 @@ int custom_analog_input(int pin) {
  //            break;             
 
        default:
-             result=value;
+             result = analogRead(pin);
              break;
   }
   Firmata.sendAnalog(pin,result);
