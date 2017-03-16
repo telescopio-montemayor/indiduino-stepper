@@ -50,4 +50,15 @@
     <indiduino pin="3" type="output" />
   </defSwitch>
 </defSwitchVector>
+
+<defSwitchVector device="Arduino Stepper" name="Direction" label="Direction" group="Main Control" state="Idle" perm="rw" rule="OneOfMany" timeout="0">
+  <defSwitch name="AXIS_0_DIR_CCW" label="AXIS 0 DIR CCW">
+    On
+  </defSwitch>
+  <defSwitch name="AXIS_0_DIR_CW" label="AXIS 0 DIR CW">
+    Off
+    <indiduino pin="4" type="output" />
+  </defSwitch>
+</defSwitchVector>
+
 </INDIDriver>

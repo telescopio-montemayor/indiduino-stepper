@@ -12,13 +12,13 @@
 
 #define FIRMATA_TRACK_AXIS_0        2
 #define FIRMATA_SLEW_AXIS_0         3
-#define FIRMATA_SLEW_AXIS_0_CCW     4
-#define FIRMATA_SLEW_AXIS_0_CW      5
+#define FIRMATA_AXIS_0_DIRECTION    4
+#define FIRMATA_AXIS_0_RESERVED     5
 
 #define FIRMATA_TRACK_AXIS_1        6
 #define FIRMATA_SLEW_AXIS_1         7
-#define FIRMATA_SLEW_AXIS_1_CCW     8
-#define FIRMATA_SLEW_AXIS_1_CW      9
+#define FIRMATA_AXIS_1_DIRECTION    8
+#define FIRMATA_AXIS_1_RESERVED     9
 
 #define FIRMATA_TRACK_SPEED_NUM     10
 #define FIRMATA_TRACK_SPEED_DEN     11
@@ -62,6 +62,7 @@ unsigned int slew_speed_num  = 400;
 unsigned int slew_speed_den  = 1;
 float track_speed = (float)track_speed_num / track_speed_den;
 float slew_speed  = (float)slew_speed_num  / slew_speed_den;
+bool axis_0_direction_cw     = false;
 
 bool isTracking = false;
 bool isSlewing = false;
@@ -98,6 +99,21 @@ void custom_analog_input() {
   //Firmata.sendAnalog(FIRMATA_AXIS_1_POSITION - FIRMATA_AXIS_0_POSITION, motor1.currentPosition());
 }
 
+void setSpeed()
+{
+  float direction = axis_0_direction_cw ? 1.0f : -1.0f;
+
+  if (isSlewing || isTracking) {
+    motor0.enableOutputs();
+  }
+
+  if (isSlewing) {
+    motor0.setSpeed(slew_speed * direction);
+  } else if (isTracking) {
+    motor0.setSpeed(track_speed * direction);
+  }
+}
+
 void analogWriteCallback(byte pin, int value)
 {
 #ifdef DEBUG
@@ -114,36 +130,28 @@ void analogWriteCallback(byte pin, int value)
     case FIRMATA_TRACK_SPEED_NUM:
       track_speed_num = value;
       track_speed = (float)track_speed_num / track_speed_den;
-      if (isTracking) {
-        motor0.setSpeed(track_speed);
-      }
+      setSpeed();
       pinState[pin] = value;
       break;
 
     case FIRMATA_TRACK_SPEED_DEN:
       track_speed_den = value > 0 ? value : 1;
       track_speed = (float)track_speed_num / track_speed_den;
-      if (isTracking) {
-        motor0.setSpeed(track_speed);
-      }
+      setSpeed();
       pinState[pin] = value;
       break;
 
     case FIRMATA_SLEW_SPEED_NUM:
       slew_speed_num = value;
       slew_speed  = (float)slew_speed_num  / slew_speed_den;
-      if (isSlewing) {
-        motor0.setSpeed(slew_speed);
-      }
+      setSpeed();
       pinState[pin] = value;
       break;
 
     case FIRMATA_SLEW_SPEED_DEN:
       slew_speed_den = value > 0 ? value : 1;
       slew_speed  = (float)slew_speed_num  / slew_speed_den;
-      if (isSlewing) {
-        motor0.setSpeed(slew_speed);
-      }
+      setSpeed();
       pinState[pin] = value;
       break;
 
@@ -165,8 +173,7 @@ void setPinValueCallback(byte pin, int value)
       if (value) {
         isTracking = true;
         isSlewing = false;
-        motor0.enableOutputs();
-        motor0.setSpeed(track_speed);
+        setSpeed();
       } else {
         motor0.stop();
         isTracking = false;
@@ -177,12 +184,16 @@ void setPinValueCallback(byte pin, int value)
       if (value) {
         isTracking = false;
         isSlewing = true;
-        motor0.enableOutputs();
-        motor0.setSpeed(slew_speed);
+        setSpeed();
       } else {
         motor0.stop();
         isSlewing = false;
       }
+      break;
+
+    case FIRMATA_AXIS_0_DIRECTION:
+      axis_0_direction_cw = value ? true : false;
+      setSpeed();
       break;
 
     default:
@@ -238,7 +249,7 @@ void sysexCallback(byte command, byte argc, byte *argv)
       Firmata.write(START_SYSEX);
       Firmata.write(CAPABILITY_RESPONSE);
 
-      for (byte p=FIRMATA_TRACK_AXIS_0; p <= FIRMATA_SLEW_AXIS_1_CW; p++) {
+      for (byte p=FIRMATA_TRACK_AXIS_0; p <=FIRMATA_AXIS_1_RESERVED ; p++) {
           pinConfig[p] = OUTPUT;
           Firmata.write((byte)OUTPUT);
           Firmata.write(1);
@@ -304,7 +315,7 @@ void setup()
   Firmata.attach(SET_DIGITAL_PIN_VALUE, setPinValueCallback);
   Firmata.attach(START_SYSEX,           sysexCallback);
 
-  for (byte p=FIRMATA_TRACK_AXIS_0; p <= FIRMATA_SLEW_AXIS_1_CW; p++) {
+  for (byte p=FIRMATA_TRACK_AXIS_0; p <= FIRMATA_AXIS_1_RESERVED; p++) {
     Firmata.setPinMode(p, OUTPUT);
   }
 
