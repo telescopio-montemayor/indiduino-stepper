@@ -63,10 +63,6 @@ typedef struct _AxisState {
   bool          direction_cw;
 } AxisState;
 
-unsigned long currentMillis;
-unsigned long previousMillis;
-int samplingInterval = MINIMUM_SAMPLING_INTERVAL;
-
 unsigned int track_speed_num = 200;
 unsigned int track_speed_den = 1;
 unsigned int slew_speed_num  = 400;
@@ -188,13 +184,20 @@ void custom_loop() {
 
 static inline
 void custom_firmata_loop () {
+  unsigned long now;
+  static unsigned long last_update_time;
+  signed long   interval;
+
   while(Firmata.available()) {
     Firmata.processInput();
   }
 
-  currentMillis = millis();
-  if (currentMillis - previousMillis > samplingInterval) {
-    previousMillis = currentMillis;
+  now = millis();
+  interval = now - last_update_time;
+  interval = interval > 0 ? interval : -interval;
+
+  if (interval > MINIMUM_SAMPLING_INTERVAL) {
+    last_update_time = now;
     custom_analog_input();
   }
 }
