@@ -8,7 +8,6 @@
 
 
 // Fake pins to send to host via Firmata.
-// XXX: acceleration and multipliers are missing.
 
 #define FIRMATA_TRACK_AXIS_0        2
 #define FIRMATA_SLEW_AXIS_0         3
@@ -24,16 +23,18 @@
 #define FIRMATA_TRACK_SPEED_DEN     11
 #define FIRMATA_SLEW_SPEED_NUM      12
 #define FIRMATA_SLEW_SPEED_DEN      13
+#define FIRMATA_ACCELERATION        14
 
-#define FIRMATA_AXIS_0_POSITION     14
-#define FIRMATA_AXIS_1_POSITION     15
+#define FIRMATA_AXIS_0_POSITION     15
+#define FIRMATA_AXIS_1_POSITION     16
 
 #define LAST_PIN                    FIRMATA_AXIS_1_POSITION
-#define TOTAL_PINS                  14
+#define TOTAL_PINS                  15
 int pinState[LAST_PIN + 1];
 byte pinConfig[LAST_PIN + 1];
 
 #define MINIMUM_SAMPLING_INTERVAL 1000
+#define AXIS_UPDATE_INTERVAL      100
 
 
 // Real Arduino pins.
@@ -46,11 +47,21 @@ AccelStepper motor0(AccelStepper::DRIVER, AXIS_0_PIN_STEP, AXIS_0_PIN_DIR);
   #define DEBUG_PORT_RX             4
   #define DEBUG_PORT_TX             3
   // rx, tx, invert
-  SoftwareSerial debugPort(DEBUG_PORT_RX, DEBUG_PORT_TX, false);
+  SoftwareSerial debugPort(DEBUG_PORT_RX, DEBUG_PORT_TX, true);
 #endif
 
-static inline void custom_analog_input();
-void setPinValueCallback(byte pin, int value);
+
+
+typedef struct _AxisState {
+  AccelStepper  *motor;
+  unsigned long last_update_time;
+  float         acceleration;
+  float         current_speed;
+  float         target_speed;
+  bool          isTracking;
+  bool          isSlewing;
+  bool          direction_cw;
+} AxisState;
 
 unsigned long currentMillis;
 unsigned long previousMillis;
@@ -60,23 +71,119 @@ unsigned int track_speed_num = 200;
 unsigned int track_speed_den = 1;
 unsigned int slew_speed_num  = 400;
 unsigned int slew_speed_den  = 1;
+unsigned int acceleration    = 1;
 float track_speed = (float)track_speed_num / track_speed_den;
 float slew_speed  = (float)slew_speed_num  / slew_speed_den;
-bool axis_0_direction_cw     = false;
 
-bool isTracking = false;
-bool isSlewing = false;
+/* forward declarations */
+static inline void custom_analog_input();
+static inline void custom_firmata_loop();
+static inline void custom_loop();
+void set_axis_slew (AxisState *axis, bool slew);
+void set_axis_track(AxisState *axis, bool track);
+static inline void compute_axis_speed(AxisState *axis);
+void update_axis_speeds(AxisState *axis);
+void setPinValueCallback(byte pin, int value);
+
+AxisState axis0;
+
+static inline
+void compute_axis_speed(AxisState *axis)
+{
+  float current_speed, target_speed, new_speed;
+  unsigned long now;
+  signed long   interval;
+
+  if (!axis)  {
+    return;
+  }
+
+  now = millis();
+
+  interval = now - axis->last_update_time;
+  interval = interval > 0 ? interval : -interval;
+  if (interval < AXIS_UPDATE_INTERVAL) {
+    axis->motor->runSpeed();
+    return;
+  }
+
+  axis->last_update_time = now;
+
+  current_speed = axis->current_speed;
+  target_speed  = axis->direction_cw ? axis->target_speed : -1.0f * axis->target_speed;
+
+  if (current_speed != target_speed) {
+    if (current_speed < target_speed) {
+      new_speed = current_speed + axis->acceleration;
+      if (new_speed > target_speed) {
+        new_speed = target_speed;
+      }
+    } else {
+      new_speed = current_speed - axis->acceleration;
+      if (new_speed < target_speed) {
+        new_speed = target_speed;
+      }
+    }
+    axis->current_speed = new_speed;
+  }
+
+  axis->motor->setSpeed(axis->current_speed);
+  axis->motor->runSpeed();
+}
+
+void
+update_axis_speeds(AxisState *axis)
+{
+#ifdef DEBUG
+  char buf[40];
+  sprintf(buf, "update_axis_speeds() track: %d slew: %d\n", axis->isTracking, axis->isSlewing);
+  debugPort.println(buf);
+#endif
+
+  axis->acceleration = acceleration * 0.001 * AXIS_UPDATE_INTERVAL;
+
+  if (axis->isTracking) {
+    axis->target_speed = track_speed;
+    return;
+  }
+
+  if (axis->isSlewing) {
+    axis->target_speed = slew_speed;
+    return;
+  }
+
+  axis->target_speed = 0;
+}
+
+void
+set_axis_track(AxisState *axis, bool track)
+{
+#ifdef DEBUG
+  char buf[40];
+  sprintf(buf, "set_axis_track() %d\n", track);
+  debugPort.println(buf);
+#endif
+
+  axis->isTracking = track;
+  update_axis_speeds(axis);
+}
+
+void
+set_axis_slew(AxisState *axis, bool slew)
+{
+#ifdef DEBUG
+  char buf[40];
+  sprintf(buf, "set_axis_slew() %d\n", slew);
+  debugPort.println(buf);
+#endif
+
+  axis->isSlewing = slew;
+  update_axis_speeds(axis);
+}
 
 static inline
 void custom_loop() {
-   if (isTracking || isSlewing) {
-     motor0.runSpeed();
-   } else {
-     if (motor0.distanceToGo() == 0) {
-       motor0.disableOutputs();
-     }
-     motor0.run();
-   }
+   compute_axis_speed(&axis0);
 }
 
 static inline
@@ -99,21 +206,6 @@ void custom_analog_input() {
   //Firmata.sendAnalog(FIRMATA_AXIS_1_POSITION - FIRMATA_AXIS_0_POSITION, motor1.currentPosition());
 }
 
-void setSpeed()
-{
-  float direction = axis_0_direction_cw ? 1.0f : -1.0f;
-
-  if (isSlewing || isTracking) {
-    motor0.enableOutputs();
-  }
-
-  if (isSlewing) {
-    motor0.setSpeed(slew_speed * direction);
-  } else if (isTracking) {
-    motor0.setSpeed(track_speed * direction);
-  }
-}
-
 void analogWriteCallback(byte pin, int value)
 {
 #ifdef DEBUG
@@ -130,28 +222,34 @@ void analogWriteCallback(byte pin, int value)
     case FIRMATA_TRACK_SPEED_NUM:
       track_speed_num = value;
       track_speed = (float)track_speed_num / track_speed_den;
-      setSpeed();
+      update_axis_speeds(&axis0);
       pinState[pin] = value;
       break;
 
     case FIRMATA_TRACK_SPEED_DEN:
       track_speed_den = value > 0 ? value : 1;
       track_speed = (float)track_speed_num / track_speed_den;
-      setSpeed();
+      update_axis_speeds(&axis0);
       pinState[pin] = value;
       break;
 
     case FIRMATA_SLEW_SPEED_NUM:
       slew_speed_num = value;
       slew_speed  = (float)slew_speed_num  / slew_speed_den;
-      setSpeed();
+      update_axis_speeds(&axis0);
       pinState[pin] = value;
       break;
 
     case FIRMATA_SLEW_SPEED_DEN:
       slew_speed_den = value > 0 ? value : 1;
       slew_speed  = (float)slew_speed_num  / slew_speed_den;
-      setSpeed();
+      update_axis_speeds(&axis0);
+      pinState[pin] = value;
+      break;
+
+    case FIRMATA_ACCELERATION:
+      acceleration = value;
+      update_axis_speeds(&axis0);
       pinState[pin] = value;
       break;
 
@@ -170,30 +268,15 @@ void setPinValueCallback(byte pin, int value)
 
   switch (pin) {
     case FIRMATA_TRACK_AXIS_0:
-      if (value) {
-        isTracking = true;
-        isSlewing = false;
-        setSpeed();
-      } else {
-        motor0.stop();
-        isTracking = false;
-      }
+      set_axis_track(&axis0, value);
       break;
 
     case FIRMATA_SLEW_AXIS_0:
-      if (value) {
-        isTracking = false;
-        isSlewing = true;
-        setSpeed();
-      } else {
-        motor0.stop();
-        isSlewing = false;
-      }
+      set_axis_slew(&axis0, value);
       break;
 
     case FIRMATA_AXIS_0_DIRECTION:
-      axis_0_direction_cw = value ? true : false;
-      setSpeed();
+      axis0.direction_cw = value ? true : false;
       break;
 
     default:
@@ -319,7 +402,7 @@ void setup()
     Firmata.setPinMode(p, OUTPUT);
   }
 
-  for (byte p=FIRMATA_TRACK_SPEED_NUM; p <= FIRMATA_SLEW_SPEED_DEN; p++) {
+  for (byte p=FIRMATA_TRACK_SPEED_NUM; p <= FIRMATA_ACCELERATION; p++) {
     Firmata.setPinMode(p, PWM);
   }
 
@@ -336,9 +419,14 @@ void setup()
   motor0.setEnablePin(AXIS_0_PIN_ENABLE);
   motor0.setMinPulseWidth(500);
   motor0.setMaxSpeed(400.0);
-  motor0.setAcceleration(40.0);
+  motor0.setAcceleration(acceleration);
   motor0.setCurrentPosition(0);
   motor0.enableOutputs();
+
+  axis0.motor         = &motor0;
+  axis0.current_speed = 0;
+  axis0.direction_cw  = false;
+  update_axis_speeds(&axis0);
 
   Firmata.begin(57600);
 

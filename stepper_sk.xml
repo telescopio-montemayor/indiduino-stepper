@@ -37,6 +37,13 @@
   </defNumber>
 </defNumberVector>
 
+<defNumberVector device="Arduino Stepper" name="ACCELERATION" label="ACCELERATION" group="Main Control" state="Idle" perm="rw" timeout="0">
+  <defNumber name="ACCELERATION" label="ACCELERATION" format="%5.0f" min="0" max="16383" step="1">
+    <indiduino pin="14" type="output" />
+    1
+  </defNumber>
+</defNumberVector>
+
 <defSwitchVector device="Arduino Stepper" name="Motion" label="Motion" group="Main Control" state="Idle" perm="rw" rule="OneOfMany" timeout="0">
   <defSwitch name="TRACKING_STOP" label="STOP">
     On
